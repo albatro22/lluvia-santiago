@@ -1,0 +1,79 @@
+# Procesa el pronóstico WRF-SMN y publica la app en GitHub Pages.
+# Corre sola cada hora; si no hay corrida nueva del modelo, no publica nada.
+name: Pronóstico WRF-SMN
+
+on:
+  schedule:
+    - cron: "20 * * * *"   # minuto 20 de cada hora (UTC)
+  workflow_dispatch:         # botón "Run workflow" en la pestaña Actions
+    inputs:
+      demo:
+        description: "Usar datos de prueba (sin AWS)"
+        type: boolean
+        default: false
+      force:
+        description: "Reprocesar aunque la corrida ya esté publicada"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    outputs:
+      updated: ${{ steps.proc.outputs.updated }}
+    steps:
+      - name: Bajar el código del repositorio
+        uses: actions/checkout@v4
+
+      - name: Instalar Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Instalar dependencias
+        run: pip install -r backend/requirements.txt
+
+      - name: Preparar la carpeta del sitio
+        run: |
+          mkdir -p site
+          cp -r web/* site/
+          # Trae el latest.json publicado para saber qué corrida ya está en línea.
+          if [ -n "${{ vars.SITE_URL }}" ]; then
+            curl -fsSL "${{ vars.SITE_URL }}/latest.json" -o site/latest.json || rm -f site/latest.json
+          fi
+
+      - name: Procesar pronóstico
+        id: proc
+        run: >
+          python backend/wrf_santiago.py --out site
+          ${{ inputs.demo && '--demo' || '' }}
+          ${{ inputs.force && '--force' || '' }}
+
+      - name: Empaquetar el sitio
+        if: steps.proc.outputs.updated == 'true'
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+  deploy:
+    needs: build
+    if: needs.build.outputs.updated == 'true'
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Publicar en GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
