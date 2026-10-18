@@ -1,0 +1,6 @@
+numpy
+scipy
+pillow
+xarray
+netCDF4
+boto3
