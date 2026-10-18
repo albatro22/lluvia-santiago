@@ -1,0 +1,468 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Lluvia en Santiago</title>
+<meta name="description" content="Precipitación pronosticada para Santiago en las próximas 72 horas, según el modelo WRF-SMN.">
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#eef1f3" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#10171e" media="(prefers-color-scheme: dark)">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600&family=Barlow:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<style>
+  :root {
+    color-scheme: light;
+    --bg: #eef1f3;
+    --surface: #ffffff;
+    --ink: #17212b;
+    --muted: #5b6b78;
+    --line: #cfd7de;
+    --accent: #2e5f8f;
+    --sel: #17212b;
+    --font: "Barlow", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    --font-cond: "Barlow Condensed", "Arial Narrow", "Roboto Condensed", sans-serif;
+    box-sizing: border-box;
+    padding-top: env(safe-area-inset-top, 0px);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      color-scheme: dark;
+      --bg: #10171e;
+      --surface: #18222c;
+      --ink: #e6ecf1;
+      --muted: #93a3b1;
+      --line: #2b3946;
+      --accent: #84b3e0;
+      --sel: #ffffff;
+    }
+  }
+  *, *::before, *::after { box-sizing: inherit; }
+  html { scroll-padding-top: env(safe-area-inset-top, 0px); }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font: 400 1rem/1.45 var(--font);
+    -webkit-text-size-adjust: 100%;
+  }
+  main { max-width: 760px; margin: 0 auto; padding: 1.25rem 1rem 2rem; }
+
+  header h1 {
+    font: 600 1.15rem/1.2 var(--font);
+    margin: 0;
+  }
+  header select {
+    font: 600 1.15rem/1.2 var(--font);
+    color: var(--ink);
+    background: transparent;
+    border: 0;
+    border-bottom: 2px solid var(--accent);
+    padding: 0 1.4rem 0.1rem 0;
+    margin: 0;
+  }
+  .meta { color: var(--muted); font-size: 0.875rem; margin: 0.25rem 0 0; }
+
+  .summary { margin: 1.5rem 0 1rem; }
+  .total {
+    font-family: var(--font-cond);
+    font-weight: 600;
+    font-size: clamp(4.5rem, 22vw, 7.5rem);
+    line-height: 0.85;
+    letter-spacing: -0.02em;
+    display: flex;
+    align-items: baseline;
+    gap: 0.4rem;
+  }
+  .total .unit { font-size: 0.32em; font-weight: 500; color: var(--muted); letter-spacing: 0; }
+  .summary p { margin: 0.5rem 0 0; max-width: 34rem; }
+  #peak { color: var(--muted); }
+
+  h2 { font: 600 1rem/1.3 var(--font); margin: 0 0 0.5rem; }
+  section.block { margin-top: 1.75rem; }
+
+  .chart-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  #chart { min-width: 560px; }
+  #chart svg { display: block; width: 100%; height: auto; touch-action: pan-x; }
+  #chart .bar { cursor: pointer; }
+  #chart text { font-family: var(--font); fill: var(--muted); }
+  #chart .day { fill: var(--ink); font-weight: 600; }
+  #chart .grid { stroke: var(--line); stroke-width: 1; }
+  #chart .sel { fill: none; stroke: var(--sel); stroke-width: 2; }
+  #chart .empty { fill: var(--line); }
+
+  .map-head { display: flex; justify-content: space-between; align-items: center; gap: 1rem; margin-bottom: 0.5rem; }
+  .map-head h2 { margin: 0; }
+  .seg { display: inline-flex; border: 1px solid var(--line); border-radius: 999px; padding: 2px; background: var(--surface); }
+  .seg button {
+    font: 500 0.875rem/1 var(--font);
+    color: var(--muted);
+    background: none;
+    border: 0;
+    border-radius: 999px;
+    padding: 0.5rem 0.85rem;
+    cursor: pointer;
+  }
+  .seg button[aria-pressed="true"] { background: var(--accent); color: var(--surface); }
+  #map {
+    height: min(68vh, 520px);
+    border-radius: 6px;
+    border: 1px solid var(--line);
+    background: var(--surface);
+  }
+  .leaflet-container { font-family: var(--font); }
+
+  .controls { display: flex; align-items: center; gap: 0.75rem; margin-top: 0.75rem; }
+  #play {
+    flex: none;
+    width: 2.75rem; height: 2.75rem;
+    border-radius: 50%;
+    border: 1px solid var(--line);
+    background: var(--surface);
+    color: var(--ink);
+    font-size: 1rem;
+    cursor: pointer;
+  }
+  #slider { flex: 1; min-width: 0; accent-color: var(--accent); height: 2.75rem; }
+  #when { display: block; margin-top: 0.25rem; font-weight: 500; min-height: 1.45em; }
+
+  .legend { margin-top: 0.75rem; }
+  .legend .strip { display: flex; height: 10px; border-radius: 2px; overflow: hidden; }
+  .legend .strip span { flex: 1; }
+  .legend .labels { display: flex; font-size: 0.75rem; color: var(--muted); margin-top: 0.2rem; }
+  .legend .labels span { flex: 1; }
+  .legend .units { font-size: 0.75rem; color: var(--muted); margin-top: 0.1rem; }
+
+  :focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+
+  .notice {
+    background: var(--surface);
+    border-left: 4px solid var(--accent);
+    padding: 0.75rem 1rem;
+    margin: 1rem 0 0;
+    border-radius: 0 6px 6px 0;
+  }
+  footer { color: var(--muted); font-size: 0.8125rem; margin-top: 2rem; max-width: 40rem; }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1 id="title">Lluvia en <span id="place">Santiago</span><select id="point" aria-label="Lugar" hidden></select></h1>
+    <p class="meta" id="run">Cargando pronóstico…</p>
+  </header>
+
+  <p class="notice" id="error" role="alert" hidden></p>
+  <p class="notice" id="stale" hidden></p>
+
+  <div id="content" hidden>
+    <section class="summary" aria-live="polite">
+      <div class="total"><span id="total">0</span><span class="unit">mm</span></div>
+      <p>en las próximas 72 horas</p>
+      <p id="peak"></p>
+    </section>
+
+    <section class="block">
+      <h2>Hora a hora</h2>
+      <div class="chart-scroll"><div id="chart"></div></div>
+    </section>
+
+    <section class="block">
+      <div class="map-head">
+        <h2>Mapa</h2>
+        <div class="seg" role="group" aria-label="Tipo de mapa">
+          <button type="button" data-mode="hourly" aria-pressed="true">Por hora</button>
+          <button type="button" data-mode="accum" aria-pressed="false">Acumulada</button>
+        </div>
+      </div>
+      <div id="map"></div>
+      <div class="controls">
+        <button type="button" id="play" aria-label="Reproducir animación">▶</button>
+        <input type="range" id="slider" min="0" max="71" value="0" step="1" aria-label="Hora del pronóstico">
+      </div>
+      <output id="when" for="slider"></output>
+      <div class="legend" id="legend"></div>
+    </section>
+  </div>
+
+  <footer>
+    Pronóstico determinista WRF de 4 km del Servicio Meteorológico Nacional de Argentina, publicado como datos abiertos en AWS.
+    Es una simulación del modelo, no una medición: en tormentas convectivas el lugar exacto y la cantidad pueden diferir bastante.
+  </footer>
+</main>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script>
+(() => {
+  "use strict";
+
+  const DATA_URL = "latest.json";
+  const TZ = "America/Santiago";
+  const STALE_HOURS = 30;
+
+  const $ = (id) => document.getElementById(id);
+  const num = (v, d = 1) => v.toLocaleString("es-CL", { maximumFractionDigits: d, minimumFractionDigits: 0 });
+  const fmtDay = new Intl.DateTimeFormat("es-CL", { timeZone: TZ, weekday: "short", day: "numeric" });
+  const fmtHour = new Intl.DateTimeFormat("es-CL", { timeZone: TZ, hour: "2-digit", minute: "2-digit", hour12: false });
+  const fmtFull = new Intl.DateTimeFormat("es-CL", { timeZone: TZ, weekday: "long", day: "numeric", month: "long", hour: "2-digit", minute: "2-digit", hour12: false });
+  const dayKey = (d) => d.toLocaleDateString("en-CA", { timeZone: TZ });
+
+  const state = { data: null, point: null, idx: 0, mode: "hourly", timer: null, overlay: null, map: null, marker: null };
+
+  // ---------- Carga ----------
+  async function load() {
+    try {
+      const res = await fetch(DATA_URL, { cache: "no-cache" });
+      if (!res.ok) throw new Error("HTTP " + res.status);
+      const data = await res.json();
+      init(data);
+    } catch (err) {
+      $("run").textContent = "Sin datos";
+      const e = $("error");
+      e.textContent = "No se pudo cargar latest.json (" + err.message + "). Revisa que el script del servidor haya corrido y que el archivo esté en la misma carpeta que esta página.";
+      e.hidden = false;
+    }
+  }
+
+  function init(data) {
+    state.data = data;
+    data.times = data.times.map((t) => new Date(t));
+    const run = new Date(data.run);
+    $("run").textContent = "Modelo " + data.model + ", corrida del " + fmtFull.format(run);
+
+    const ageH = (Date.now() - run.getTime()) / 3.6e6;
+    if (ageH > STALE_HOURS) {
+      const s = $("stale");
+      s.textContent = "Este pronóstico tiene " + Math.round(ageH) + " horas. El servidor no ha publicado corridas nuevas.";
+      s.hidden = false;
+    }
+
+    // Empieza en la hora actual si cae dentro del pronóstico.
+    const now = Date.now();
+    const first = data.times.findIndex((t) => t.getTime() >= now);
+    state.idx = first > 0 ? first : 0;
+
+    $("slider").max = String(data.times.length - 1);
+    setupPoints();
+    setupMap();
+    setupControls();
+    $("content").hidden = false;
+    state.map.invalidateSize();
+    selectPoint(data.points[0].id);
+  }
+
+  function setupPoints() {
+    const pts = state.data.points;
+    if (pts.length < 2) return;
+    const sel = $("point");
+    sel.innerHTML = "";
+    pts.forEach((p) => sel.add(new Option(p.name, p.id)));
+    $("place").hidden = true;
+    sel.hidden = false;
+    sel.addEventListener("change", () => selectPoint(sel.value));
+  }
+
+  function selectPoint(id) {
+    state.point = state.data.points.find((p) => p.id === id);
+    $("place").textContent = state.point.name.replace(/ centro$/i, "");
+    state.marker.setLatLng([state.point.lat, state.point.lon]);
+    renderSummary();
+    renderChart();
+    update();
+  }
+
+  // ---------- Resumen ----------
+  function renderSummary() {
+    const s = state.point.hourly;
+    const total = s.reduce((a, b) => a + b, 0);
+    $("total").textContent = num(total, total < 10 ? 1 : 0);
+    const max = Math.max(...s);
+    const peak = $("peak");
+    if (total < 0.5) {
+      peak.textContent = "No se espera lluvia significativa en este período.";
+      return;
+    }
+    const i = s.indexOf(max);
+    const end = state.data.times[i];
+    const start = new Date(end.getTime() - 3.6e6);
+    const rainyHours = s.filter((v) => v >= 0.2).length;
+    peak.textContent = "Lo más intenso: " + num(max) + " mm entre las " + fmtHour.format(start) + " y las " +
+      fmtHour.format(end) + " del " + fmtDay.format(end) + ". Llueve en " + rainyHours + " de las " + s.length + " horas.";
+  }
+
+  // ---------- Gráfico ----------
+  function colorFor(v, layer) {
+    const { levels, colors } = layer;
+    let c = null;
+    for (let i = 0; i < levels.length; i++) if (v >= levels[i]) c = colors[i];
+    return c;
+  }
+
+  function renderChart() {
+    const s = state.point.hourly;
+    const times = state.data.times;
+    const layer = state.data.layers.hourly;
+    const W = 720, H = 210, top = 26, bottom = 30, left = 30, right = 6;
+    const ih = H - top - bottom, iw = W - left - right;
+    const bw = iw / s.length;
+    const maxV = Math.max(2, Math.ceil(Math.max(...s)));
+    const step = maxV <= 4 ? 1 : maxV <= 10 ? 2 : 5;
+    const y = (v) => top + ih - (v / maxV) * ih;
+
+    let out = '<svg viewBox="0 0 ' + W + " " + H + '" role="img" aria-label="Lluvia hora a hora en milímetros">';
+    for (let v = 0; v <= maxV; v += step) {
+      out += '<line class="grid" x1="' + left + '" x2="' + (W - right) + '" y1="' + y(v) + '" y2="' + y(v) + '"/>';
+      out += '<text x="' + (left - 6) + '" y="' + (y(v) + 4) + '" text-anchor="end" font-size="11">' + v + "</text>";
+    }
+    out += '<text x="' + (left - 6) + '" y="' + (top - 12) + '" text-anchor="end" font-size="11">mm</text>';
+
+    // Separadores de día (medianoche local) y etiquetas cada 6 h.
+    let prevDay = null;
+    times.forEach((t, i) => {
+      const startOfSlot = new Date(t.getTime() - 3.6e6);
+      const x = left + i * bw;
+      const dk = dayKey(startOfSlot);
+      if (dk !== prevDay) {
+        if (prevDay !== null) out += '<line class="grid" x1="' + x + '" x2="' + x + '" y1="' + (top - 16) + '" y2="' + (top + ih) + '"/>';
+        out += '<text class="day" x="' + (x + 4) + '" y="' + (top - 6) + '" font-size="12">' + fmtDay.format(startOfSlot) + "</text>";
+        prevDay = dk;
+      }
+      const hh = Number(fmtHour.format(startOfSlot).slice(0, 2));
+      if (hh % 6 === 0) out += '<text x="' + (x + 1) + '" y="' + (H - 10) + '" font-size="11">' + hh + "h</text>";
+    });
+
+    s.forEach((v, i) => {
+      const x = left + i * bw;
+      const c = colorFor(v, layer);
+      const hgt = c ? Math.max(2, top + ih - y(v)) : 2;
+      out += '<rect class="bar' + (c ? "" : " empty") + '" data-i="' + i + '" x="' + (x + 0.75) + '" y="' + (top + ih - hgt) +
+        '" width="' + Math.max(1, bw - 1.5) + '" height="' + hgt + '"' + (c ? ' fill="' + c + '"' : "") + "/>";
+      // Zona táctil completa por hora.
+      out += '<rect class="bar" data-i="' + i + '" x="' + x + '" y="' + top + '" width="' + bw + '" height="' + ih + '" fill="transparent"/>';
+    });
+    out += '<rect id="selbox" class="sel" x="0" y="' + (top - 2) + '" width="' + bw + '" height="' + (ih + 4) + '" rx="2"/>';
+    out += "</svg>";
+    const chart = $("chart");
+    chart.innerHTML = out;
+    chart.dataset.left = left;
+    chart.dataset.bw = bw;
+    chart.querySelector("svg").addEventListener("click", (e) => {
+      const i = e.target.getAttribute && e.target.getAttribute("data-i");
+      if (i !== null) { stop(); state.idx = Number(i); update(); }
+    });
+  }
+
+  // ---------- Mapa ----------
+  function tileUrl() {
+    const dark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+    return "https://{s}.basemaps.cartocdn.com/" + (dark ? "dark_all" : "light_all") + "/{z}/{x}/{y}{r}.png";
+  }
+
+  function setupMap() {
+    const b = state.data.bounds;
+    const map = L.map("map", { zoomControl: true, attributionControl: true, maxBounds: L.latLngBounds(b).pad(0.5) });
+    const tiles = L.tileLayer(tileUrl(), {
+      subdomains: "abcd", maxZoom: 12, minZoom: 6,
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>',
+    }).addTo(map);
+    window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => tiles.setUrl(tileUrl()));
+    map.fitBounds(b);
+    map.setView([-33.45, -70.66], Math.max(map.getZoom(), 8));
+    state.overlay = L.imageOverlay(state.data.layers.hourly.files[0], b, { opacity: 0.85, interactive: false }).addTo(map);
+    state.marker = L.circleMarker([-33.45, -70.66], { radius: 6, weight: 2, color: "#17212b", fillColor: "#ffffff", fillOpacity: 1 }).addTo(map);
+    state.map = map;
+    preload();
+  }
+
+  function preload() {
+    // Precarga las capas del modo activo para que la animación sea fluida.
+    state.data.layers[state.mode].files.forEach((f) => { const img = new Image(); img.src = f; });
+  }
+
+  function renderLegend() {
+    const layer = state.data.layers[state.mode];
+    let strip = "", labels = "";
+    layer.colors.forEach((c, i) => {
+      strip += '<span style="background:' + c + '"></span>';
+      labels += "<span>" + num(layer.levels[i]) + "</span>";
+    });
+    $("legend").innerHTML = '<div class="strip">' + strip + '</div><div class="labels">' + labels +
+      '</div><div class="units">' + (state.mode === "hourly" ? "milímetros en la hora" : "milímetros acumulados desde el inicio del pronóstico") + "</div>";
+  }
+
+  // ---------- Controles ----------
+  function setupControls() {
+    $("slider").addEventListener("input", (e) => { stop(); state.idx = Number(e.target.value); update(); });
+    document.querySelectorAll(".seg button").forEach((btn) => btn.addEventListener("click", () => {
+      state.mode = btn.dataset.mode;
+      document.querySelectorAll(".seg button").forEach((b) => b.setAttribute("aria-pressed", String(b === btn)));
+      preload();
+      update();
+    }));
+    $("play").addEventListener("click", () => (state.timer ? stop() : play()));
+    document.addEventListener("keydown", (e) => {
+      if (e.target.tagName === "INPUT" || e.target.tagName === "SELECT") return;
+      if (e.key === "ArrowRight" || e.key === "ArrowLeft") {
+        stop();
+        const n = state.data.times.length;
+        state.idx = (state.idx + (e.key === "ArrowRight" ? 1 : -1) + n) % n;
+        update();
+      }
+    });
+  }
+
+  function play() {
+    $("play").textContent = "❚❚";
+    $("play").setAttribute("aria-label", "Pausar animación");
+    state.timer = setInterval(() => {
+      state.idx = (state.idx + 1) % state.data.times.length;
+      update();
+    }, 450);
+  }
+
+  function stop() {
+    if (!state.timer) return;
+    clearInterval(state.timer);
+    state.timer = null;
+    $("play").textContent = "▶";
+    $("play").setAttribute("aria-label", "Reproducir animación");
+  }
+
+  // ---------- Estado visible ----------
+  function update() {
+    const { data, idx, mode, point } = state;
+    $("slider").value = String(idx);
+    state.overlay.setUrl(data.layers[mode].files[idx]);
+    renderLegend();
+
+    const end = data.times[idx];
+    const start = new Date(end.getTime() - 3.6e6);
+    let txt;
+    if (mode === "hourly") {
+      txt = fmtDay.format(start) + ", de " + fmtHour.format(start) + " a " + fmtHour.format(end) + ": " +
+        num(point.hourly[idx]) + " mm en " + point.name;
+    } else {
+      const acc = point.hourly.slice(0, idx + 1).reduce((a, b) => a + b, 0);
+      txt = "Hasta el " + fmtDay.format(end) + " a las " + fmtHour.format(end) + ": " + num(acc) + " mm acumulados en " + point.name;
+    }
+    $("when").textContent = txt;
+
+    const chart = $("chart");
+    const box = chart.querySelector("#selbox");
+    if (box) box.setAttribute("x", String(Number(chart.dataset.left) + idx * Number(chart.dataset.bw)));
+  }
+
+  if ("serviceWorker" in navigator) {
+    window.addEventListener("load", () => navigator.serviceWorker.register("sw.js").catch(() => {}));
+  }
+  load();
+})();
+</script>
+</body>
+</html>
