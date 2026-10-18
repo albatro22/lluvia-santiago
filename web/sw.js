@@ -1,6 +1,6 @@
 // Service worker: guarda la interfaz para uso sin conexión y siempre intenta
 // traer el pronóstico más reciente antes de usar la copia guardada.
-const SHELL = "lluvia-shell-v1";
+const SHELL = "lluvia-shell-v2";
 const DATA = "lluvia-data-v1";
 const SHELL_FILES = [
   "./",
@@ -42,6 +42,20 @@ self.addEventListener("fetch", (e) => {
     return;
   }
 
-  // Interfaz: copia guardada primero.
+  // Páginas y archivos propios: red primero, para que las actualizaciones se vean.
+  if (url.origin === location.origin) {
+    e.respondWith(
+      fetch(e.request)
+        .then((res) => {
+          const copy = res.clone();
+          caches.open(SHELL).then((c) => c.put(e.request, copy));
+          return res;
+        })
+        .catch(() => caches.match(e.request))
+    );
+    return;
+  }
+
+  // Librerías externas (Leaflet): copia guardada primero.
   e.respondWith(caches.match(e.request).then((hit) => hit || fetch(e.request)));
 });
