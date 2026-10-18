@@ -116,6 +116,10 @@
     background: var(--surface);
   }
   .leaflet-container { font-family: var(--font); }
+  @media (prefers-color-scheme: dark) {
+    /* Oscurece solo el mapa base; la capa de lluvia mantiene sus colores. */
+    .leaflet-tile-pane { filter: invert(1) hue-rotate(180deg) brightness(0.85) contrast(0.9); }
+  }
 
   .controls { display: flex; align-items: center; gap: 0.75rem; margin-top: 0.75rem; }
   #play {
@@ -359,19 +363,14 @@
   }
 
   // ---------- Mapa ----------
-  function tileUrl() {
-    const dark = window.matchMedia("(prefers-color-scheme: dark)").matches;
-    return "https://{s}.basemaps.cartocdn.com/" + (dark ? "dark_all" : "light_all") + "/{z}/{x}/{y}{r}.png";
-  }
 
   function setupMap() {
     const b = state.data.bounds;
     const map = L.map("map", { zoomControl: true, attributionControl: true, maxBounds: L.latLngBounds(b).pad(0.5) });
-    const tiles = L.tileLayer(tileUrl(), {
-      subdomains: "abcd", maxZoom: 12, minZoom: 6,
-      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>',
+    L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      maxZoom: 12, minZoom: 6,
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
     }).addTo(map);
-    window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => tiles.setUrl(tileUrl()));
     map.fitBounds(b);
     map.setView([-33.45, -70.66], Math.max(map.getZoom(), 8));
     state.overlay = L.imageOverlay(state.data.layers.hourly.files[0], b, { opacity: 0.85, interactive: false }).addTo(map);
